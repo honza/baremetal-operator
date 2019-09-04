@@ -302,72 +302,89 @@ func (p *ironicProvisioner) ValidateManagementAccess(credentialsChanged bool) (r
 		checksum, checksumType, ok := p.host.GetImageChecksum()
 
 		if ok {
-			p.log.Info("setting instance info",
-				"image_source", p.host.Spec.Image.URL,
-				"image_os_hash_value", checksum,
-				"image_os_hash_algo", checksumType,
-			)
-
-			updates := nodes.UpdateOpts{
-				nodes.UpdateOperation{
-					Op:    nodes.AddOp,
-					Path:  "/instance_info/image_source",
-					Value: p.host.Spec.Image.URL,
-				},
-				nodes.UpdateOperation{
-					Op:    nodes.AddOp,
-					Path:  "/instance_info/image_os_hash_value",
-					Value: checksum,
-				},
-				nodes.UpdateOperation{
-					Op:    nodes.AddOp,
-					Path:  "/instance_info/image_os_hash_algo",
-					Value: checksumType,
-				},
-				nodes.UpdateOperation{
-					Op:    nodes.ReplaceOp,
-					Path:  "/instance_uuid",
-					Value: string(p.host.ObjectMeta.UID),
-				},
+			// If there is an image to be provisioned, or an image has
+			// previously been provisioned, include those details. Either
+			// case may mean we are re-adopting a host that was already
+			// known but removed/lost because the pod restarted.
+			var imageURL string
+			switch {
+			case p.host.Spec.Image != nil && p.host.Spec.Image.URL != "":
+				imageURL = p.host.Spec.Image.URL
+				checksum = p.host.Spec.Image.Checksum
+			case p.host.Status.Provisioning.Image.URL != "":
+				imageURL = p.host.Status.Provisioning.Image.URL
+				checksum = p.host.Status.Provisioning.Image.Checksum
 			}
 
-			// image_checksum
-			//
-			// FIXME: For older versions of ironic that do not have
-			// https://review.opendev.org/#/c/711816/ failing to
-			// include the 'image_checksum' causes ironic to refuse to
-			// provision the image, even if the other hash value
-			// parameters are given. We only want to do that for MD5,
-			// however, because those versions of ironic only support
-			// MD5 checksums.
-			if checksumType == string(metal3v1alpha1.MD5) {
-				updates = append(
-					updates,
+			if imageURL != "" {
+				p.log.Info("setting instance info",
+					"image_source", imageURL,
+					"checksum", checksum,
+					"image_os_hash_value", checksum,
+					"image_os_hash_algo", checksumType,
+				)
+				updates := nodes.UpdateOpts{
 					nodes.UpdateOperation{
 						Op:    nodes.AddOp,
-						Path:  "/instance_info/image_checksum",
+						Path:  "/instance_info/image_source",
+						Value: imageURL,
+					},
+					nodes.UpdateOperation{
+						Op:    nodes.AddOp,
+						Path:  "/instance_info/image_os_hash_value",
 						Value: checksum,
 					},
-				)
-			}
+					nodes.UpdateOperation{
+						Op:    nodes.AddOp,
+						Path:  "/instance_info/image_os_hash_algo",
+						Value: checksumType,
+					},
+					nodes.UpdateOperation{
+						Op:    nodes.ReplaceOp,
+						Path:  "/instance_uuid",
+						Value: string(p.host.ObjectMeta.UID),
+					},
+				}
 
-			if p.host.Spec.Image.DiskFormat != nil {
-				updates = append(updates, nodes.UpdateOperation{
-					Op:    nodes.AddOp,
-					Path:  "/instance_info/image_disk_format",
-					Value: *p.host.Spec.Image.DiskFormat,
-				})
-			}
-			_, err = nodes.Update(p.client, ironicNode.UUID, updates).Extract()
-			switch err.(type) {
-			case nil:
-			case gophercloud.ErrDefault409:
-				p.log.Info("could not update host settings in ironic, busy")
-				result.Dirty = true
-				result.RequeueAfter = provisionRequeueDelay
-				return result, nil
-			default:
-				return result, errors.Wrap(err, "failed to update host settings in ironic")
+				// image_checksum
+				//
+				// FIXME: For older versions of ironic that do not have
+				// https://review.opendev.org/#/c/711816/ failing to
+				// include the 'image_checksum' causes ironic to refuse to
+				// provision the image, even if the other hash value
+				// parameters are given. We only want to do that for MD5,
+				// however, because those versions of ironic only support
+				// MD5 checksums.
+				if checksumType == string(metal3v1alpha1.MD5) {
+					updates = append(
+						updates,
+						nodes.UpdateOperation{
+							Op:    nodes.AddOp,
+							Path:  "/instance_info/image_checksum",
+							Value: checksum,
+						},
+					)
+				}
+
+				if p.host.Spec.Image.DiskFormat != nil {
+					updates = append(updates, nodes.UpdateOperation{
+						Op:    nodes.AddOp,
+						Path:  "/instance_info/image_disk_format",
+						Value: *p.host.Spec.Image.DiskFormat,
+					})
+				}
+
+				_, err = nodes.Update(p.client, ironicNode.UUID, updates).Extract()
+				switch err.(type) {
+				case nil:
+				case gophercloud.ErrDefault409:
+					p.log.Info("could not update host settings in ironic, busy")
+					result.Dirty = true
+					result.RequeueAfter = provisionRequeueDelay
+					return result, nil
+				default:
+					return result, errors.Wrap(err, "failed to update host settings in ironic")
+				}
 			}
 		}
 	} else {
@@ -1135,8 +1152,14 @@ func (p *ironicProvisioner) Deprovision() (result provisioner.Result, err error)
 		return result, errors.Wrap(err, "failed to find existing host")
 	}
 	if ironicNode == nil {
-		p.log.Info("no node found, already deleted")
-		return result, nil
+		// The node does not exist, but we were called so the
+		// controller thinks that the node existed at one time. That
+		// likely means data loss from restarting the database, so
+		// pass through the validation process to register the node
+		// again. Pass true to indicate that we need to re-test the
+		// credentials, just in case.
+		p.log.Info("re-registering host")
+		return p.ValidateManagementAccess(true)
 	}
 
 	p.log.Info("deprovisioning host",
@@ -1145,11 +1168,12 @@ func (p *ironicProvisioner) Deprovision() (result provisioner.Result, err error)
 		"current", ironicNode.ProvisionState,
 		"target", ironicNode.TargetProvisionState,
 		"deploy step", ironicNode.DeployStep,
+		"instance_info", ironicNode.InstanceInfo,
 	)
 
 	switch nodes.ProvisionState(ironicNode.ProvisionState) {
 
-	case nodes.Error, nodes.CleanFail:
+	case nodes.Error, nodes.CleanFail, nodes.AdoptFail:
 		if !ironicNode.Maintenance {
 			p.log.Info("setting host maintenance flag to force image delete")
 			return p.setMaintenanceFlag(ironicNode, true)
@@ -1205,17 +1229,43 @@ func (p *ironicProvisioner) Deprovision() (result provisioner.Result, err error)
 		result.RequeueAfter = deprovisionRequeueDelay
 		return result, nil
 
-	case nodes.Manageable, nodes.Enroll, nodes.Verifying:
+	case nodes.Enroll, nodes.Verifying, nodes.Adopting:
+		p.log.Info("re-registering to deprovision")
+		result.Dirty = true
+		result.RequeueAfter = deprovisionRequeueDelay
+		return result, nil
+
+	case nodes.Manageable:
+		// We can end up "manageable" under two conditions.  If we end
+		// up manageable because of a successful deprovisioning
+		// operation, when the node moves from cleaning to manageable,
+		// the instance_info structure is cleared out so we know we
+		// are done. If we end up here because we re-register a host,
+		// moving from verifying to manageable, then we have an image
+		// source and we need to adopt the node so we can try to
+		// deprovision all over again.
+		if _, ok := ironicNode.InstanceInfo["image_source"]; ok {
+			p.log.Info("adopting to deprovision")
+			return p.changeNodeProvisionState(
+				ironicNode,
+				nodes.ProvisionStateOpts{
+					Target: nodes.TargetAdopt,
+				},
+			)
+		}
 		p.publisher("DeprovisioningComplete", "Image deprovisioning completed")
 		return result, nil
 
-	default:
+	case nodes.Active:
 		p.log.Info("starting deprovisioning")
 		p.publisher("DeprovisioningStarted", "Image deprovisioning started")
 		return p.changeNodeProvisionState(
 			ironicNode,
 			nodes.ProvisionStateOpts{Target: nodes.TargetDeleted},
 		)
+
+	default:
+		return result, fmt.Errorf("Unhandled ironic state %s", ironicNode.ProvisionState)
 	}
 }
 
