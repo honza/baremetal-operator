@@ -143,6 +143,14 @@ func main() {
 		os.Exit(1)
 	}
 
+	if err = (&metal3iocontroller.BMCEventSubscriptionReconciler{
+		Client: mgr.GetClient(),
+		Log:    ctrl.Log.WithName("controllers").WithName("BMCEventSubscription"),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "BMCEventSubscription")
+		os.Exit(1)
+	}
+
 	setupChecks(mgr)
 
 	// +kubebuilder:scaffold:builder
