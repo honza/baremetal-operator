@@ -1184,6 +1184,14 @@ func (m *mockProvisioner) IsReady() (result bool, err error) {
 	return
 }
 
+func (m *mockProvisioner) AddBMCEventSubscription(subscription metal3v1alpha1.BMCEventSubscription) (result provisioner.Result, err error) {
+	return result, nil
+}
+
+func (m *mockProvisioner) RemoveBMCEventSubscription(subscription metal3v1alpha1.BMCEventSubscription) (result provisioner.Result, err error) {
+	return result, nil
+}
+
 func TestUpdateBootModeStatus(t *testing.T) {
 	testCases := []struct {
 		Scenario       string

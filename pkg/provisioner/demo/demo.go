@@ -349,3 +349,11 @@ func (p *demoProvisioner) PowerOff(rebootMode metal3v1alpha1.RebootMode) (result
 func (p *demoProvisioner) IsReady() (result bool, err error) {
 	return true, nil
 }
+
+func (p *demoProvisioner) AddBMCEventSubscription(subscription metal3v1alpha1.BMCEventSubscription) (result provisioner.Result, err error) {
+	return result, nil
+}
+
+func (p *demoProvisioner) RemoveBMCEventSubscription(subscription metal3v1alpha1.BMCEventSubscription) (result provisioner.Result, err error) {
+	return result, nil
+}

@@ -144,8 +144,9 @@ func main() {
 	}
 
 	if err = (&metal3iocontroller.BMCEventSubscriptionReconciler{
-		Client: mgr.GetClient(),
-		Log:    ctrl.Log.WithName("controllers").WithName("BMCEventSubscription"),
+		Client:             mgr.GetClient(),
+		Log:                ctrl.Log.WithName("controllers").WithName("BMCEventSubscription"),
+		ProvisionerFactory: provisionerFactory,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "BMCEventSubscription")
 		os.Exit(1)

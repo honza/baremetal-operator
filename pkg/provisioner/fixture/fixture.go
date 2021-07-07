@@ -331,3 +331,11 @@ func (p *fixtureProvisioner) IsReady() (result bool, err error) {
 
 	return p.state.BecomeReadyCounter == 0, nil
 }
+
+func (p *fixtureProvisioner) AddBMCEventSubscription(subscription metal3v1alpha1.BMCEventSubscription) (result provisioner.Result, err error) {
+	return result, nil
+}
+
+func (p *fixtureProvisioner) RemoveBMCEventSubscription(subscription metal3v1alpha1.BMCEventSubscription) (result provisioner.Result, err error) {
+	return result, nil
+}

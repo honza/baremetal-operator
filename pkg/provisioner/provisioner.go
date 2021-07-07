@@ -157,6 +157,9 @@ type Provisioner interface {
 
 	// HasCapacity checks if the backend has a free (de)provisioning slot for the current host
 	HasCapacity() (result bool, err error)
+
+	AddBMCEventSubscription(subscription metal3v1alpha1.BMCEventSubscription) (result Result, err error)
+	RemoveBMCEventSubscription(subscription metal3v1alpha1.BMCEventSubscription) (result Result, err error)
 }
 
 // Result holds the response from a call in the Provsioner API.

@@ -1691,3 +1691,11 @@ func (p *ironicProvisioner) loadBusyHosts() (hosts map[string]struct{}, err erro
 
 	return hosts, nil
 }
+
+func (p *ironicProvisioner) AddBMCEventSubscription(subscription metal3v1alpha1.BMCEventSubscription) (result provisioner.Result, err error) {
+	return result, nil
+}
+
+func (p *ironicProvisioner) RemoveBMCEventSubscription(subscription metal3v1alpha1.BMCEventSubscription) (result provisioner.Result, err error) {
+	return result, nil
+}
