@@ -11,6 +11,7 @@ import (
 	"github.com/gophercloud/gophercloud"
 	"github.com/gophercloud/gophercloud/openstack/baremetal/v1/nodes"
 	"github.com/gophercloud/gophercloud/openstack/baremetal/v1/ports"
+	"github.com/gophercloud/gophercloud/openstack/baremetal/v1/subscriptions"
 	"github.com/gophercloud/gophercloud/openstack/baremetalintrospection/v1/introspection"
 	"github.com/pkg/errors"
 	"sigs.k8s.io/yaml"
@@ -1693,9 +1694,17 @@ func (p *ironicProvisioner) loadBusyHosts() (hosts map[string]struct{}, err erro
 }
 
 func (p *ironicProvisioner) AddBMCEventSubscription(subscription metal3v1alpha1.BMCEventSubscription) (result provisioner.Result, err error) {
-	return result, nil
+	_, err = subscriptions.Create(
+		p.client,
+		subscriptions.CreateOpts{
+			NodeUUID:    subscription.Spec.HostRef,
+			Destination: subscription.Spec.TargetURI,
+			Context:     subscription.Spec.Context,
+		}).Extract()
+	return result, err
 }
 
 func (p *ironicProvisioner) RemoveBMCEventSubscription(subscription metal3v1alpha1.BMCEventSubscription) (result provisioner.Result, err error) {
-	return result, nil
+	err = subscriptions.Delete(p.client, subscription.Status.SubscriptionID).ExtractErr()
+	return result, err
 }
