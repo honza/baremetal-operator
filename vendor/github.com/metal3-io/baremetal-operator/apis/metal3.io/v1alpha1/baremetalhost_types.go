@@ -837,6 +837,7 @@ type ProvisionStatus struct {
 	CustomDeploy *CustomDeploy `json:"customDeploy,omitempty"`
 }
 
+// +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 // BareMetalHost is the Schema for the baremetalhosts API
